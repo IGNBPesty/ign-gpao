@@ -3,6 +3,7 @@ Client pour la GPAO
 Permet de lancer un thread par coeur
 """
 # !/usr/bin/python
+import sys
 import multiprocessing
 import random
 import subprocess
@@ -14,10 +15,9 @@ import tempfile
 import shlex
 import platform
 import ctypes
+import argparse
 import requests
 
-HOSTNAME = socket.gethostname()
-NB_PROCESS = multiprocessing.cpu_count()
 URL_API = "http://" \
     + os.getenv('URL_API', 'localhost') \
     + ":"+os.getenv('API_PORT', '8080') \
@@ -75,17 +75,17 @@ def launch_command(job, str_thread_id, shell, working_dir):
     try:
         if not shell:
             command = shlex.split(command, posix=False)
-        proc = subprocess.Popen(command,
-                                shell=shell,
-                                stdout=subprocess.PIPE,
-                                stderr=subprocess.STDOUT,
-                                encoding='utf8',
-                                errors='replace',
-                                universal_newlines=True,
-                                cwd=working_dir.name)
-        read_stdout_process(proc, id_job)
-        return_code = proc.poll()
-        status = 'done'
+        with subprocess.Popen(command,
+                              shell=shell,
+                              stdout=subprocess.PIPE,
+                              stderr=subprocess.STDOUT,
+                              encoding='utf8',
+                              errors='replace',
+                              universal_newlines=True,
+                              cwd=working_dir.name) as proc:
+            read_stdout_process(proc, id_job)
+            return_code = proc.poll()
+            status = 'done'
     except subprocess.CalledProcessError as ex:
         status = 'failed'
         error_message += str(ex)
@@ -102,8 +102,10 @@ def launch_command(job, str_thread_id, shell, working_dir):
     return id_job, return_code, status, error_message
 
 
-def process(thread_id):
+def process(param):
     """ Traitement pour un thread """
+    thread_id = param[0]
+    hostname = param[1]
     str_thread_id = "["+str(thread_id)+"] : "
     id_session = -1
     # AB : Il faut passer shell=True sous windows
@@ -113,51 +115,51 @@ def process(thread_id):
     try:
         # On cree un dossier temporaire dans le dossier
         # courant qui devient le dossier d'execution
-        working_dir = tempfile.TemporaryDirectory(dir='.')
+        with tempfile.TemporaryDirectory(dir='.') as working_dir:
 
-        req = requests.put(URL_API +
-                           'session?host=' +
-                           HOSTNAME)
-        id_session = req.json()[0]['id']
-        print(str_thread_id +
-              ' : working dir (' +
-              working_dir.name +
-              ') id_session (' +
-              str(id_session) +
-              ')')
-        while True:
-            # on verifie l'espace disponible dans le dossier de travail
-            free_gb = get_free_space_gb(working_dir.name)
-            req = None
-            if free_gb < MIN_AVAILABLE_SPACE:
-                print('espace disque insuffisant : ',
-                      free_gb,
-                      '/',
-                      MIN_AVAILABLE_SPACE)
-            else:
-                req = requests.get(URL_API +
-                                   'job/ready?id_session=' +
-                                   str(id_session))
-            if req and req.json():
-                id_job, return_code, status, error_message =\
-                    launch_command(req.json()[0],
-                                   str_thread_id,
-                                   shell, working_dir)
-                print('Mise a jour : ', return_code, status, error_message)
-                req = requests.post(URL_API +
-                                    'job?id=' +
-                                    str(id_job) +
-                                    '&status=' +
-                                    str(status) +
-                                    '&returnCode=' +
-                                    str(return_code),
-                                    json={"log": error_message})
-                if req.status_code != 200:
-                    print('Error : ',
-                          req.status_code,
-                          req.content)
+            req = requests.put(URL_API +
+                               'session?host=' +
+                               hostname)
+            id_session = req.json()[0]['id']
+            print(str_thread_id +
+                  ' : working dir (' +
+                  working_dir +
+                  ') id_session (' +
+                  str(id_session) +
+                  ')')
+            while True:
+                # on verifie l'espace disponible dans le dossier de travail
+                free_gb = get_free_space_gb(working_dir)
+                req = None
+                if free_gb < MIN_AVAILABLE_SPACE:
+                    print('espace disque insuffisant : ',
+                          free_gb,
+                          '/',
+                          MIN_AVAILABLE_SPACE)
+                else:
+                    req = requests.get(URL_API +
+                                       'job/ready?id_session=' +
+                                       str(id_session))
+                if req and req.json():
+                    id_job, return_code, status, error_message =\
+                        launch_command(req.json()[0],
+                                       str_thread_id,
+                                       shell, working_dir)
+                    print('Mise a jour : ', return_code, status, error_message)
+                    req = requests.post(URL_API +
+                                        'job?id=' +
+                                        str(id_job) +
+                                        '&status=' +
+                                        str(status) +
+                                        '&returnCode=' +
+                                        str(return_code),
+                                        json={"log": error_message})
+                    if req.status_code != 200:
+                        print('Error : ',
+                              req.status_code,
+                              req.content)
 
-            time.sleep(random.randrange(10))
+                time.sleep(random.randrange(10))
     except KeyboardInterrupt:
         print("on demande au process de s'arreter")
         req = requests.post(URL_API +
@@ -167,23 +169,69 @@ def process(thread_id):
 
 
 if __name__ == "__main__":
+    HOSTNAME = socket.gethostname()
+    NB_PROCESS = multiprocessing.cpu_count()
 
     print("Demarrage du client GPAO")
-    print("HOSTNAME : ", HOSTNAME)
     print("URL_API : "+URL_API)
 
-    POOL = multiprocessing.Pool(NB_PROCESS)
-    signal.signal(signal.SIGINT, signal.SIG_IGN)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-n", "--threads",
+                        required=False,
+                        type=int,
+                        help="fix the number of threads \
+                        (default: estimated number of cpu on the system)")
+    parser.add_argument("-s", "--suffix",
+                        help="add a suffix on the hostname \
+                        (necessary if using several \
+                        client instances on a machine)",
+                        required=False,
+                        type=str)
+    args = parser.parse_args()
+    print(args)
+    if args.threads:
+        if args.threads <= 0:
+            print('Le nombre de thread doit être >0 : ', args.threads)
+            sys.exit(1)
+        NB_PROCESS = args.threads
+    if args.suffix:
+        HOSTNAME += args.suffix
 
-    try:
-        POOL.map(process, range(NB_PROCESS))
+    print("HOSTNAME : ", HOSTNAME)
+    print("NB_PROCESS : ", NB_PROCESS)
 
-    except KeyboardInterrupt:
-        print("on demande au pool de s'arreter")
-        POOL.terminate()
-    else:
-        print("Normal termination")
-        POOL.close()
-    POOL.join()
+    req_nb_sessions = requests.get(URL_API + 'nodes')
+    nodes = req_nb_sessions.json()
+    NB_SESSION = 0
+    for node in nodes:
+        if node['host'] == HOSTNAME:
+            # attention, les donnees sont en string
+            # a corriger dans l'API
+            NB_SESSION = int(node['active']) +\
+                int(node['idle']) +\
+                int(node['running'])
+    if NB_SESSION > 0:
+        print('Erreur: il y a déjà des sessions '
+              'ouvertes avec ce nom de machine.')
+        print('Pour lancer plusieurs client sur une même machine, '
+              'utiliser un suffixe (ex: python client.py -s _MonSuffixe).')
+        sys.exit(1)
+
+    with multiprocessing.Pool(NB_PROCESS) as POOL:
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+        parameters = []
+        for thread_number in range(NB_PROCESS):
+            parameters.append((thread_number, HOSTNAME))
+
+        try:
+            POOL.map(process, parameters)
+
+        except KeyboardInterrupt:
+            print("on demande au pool de s'arreter")
+            POOL.terminate()
+        else:
+            print("Normal termination")
+            POOL.close()
+        POOL.join()
 
     print("Fin du client GPAO")
