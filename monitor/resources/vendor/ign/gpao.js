@@ -15,6 +15,19 @@ function deleteProject(id, name) {
   }
 }
 
+// Fonction permettant de changer la priorité d'un projet
+function setPriority(id, priority) {
+  // on fait une requete sur l'API
+  fetch(`${apiUrl}/api/project/${id}/setPriority?priority=${priority}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  }).then(() => {
+    location.reload();
+  });
+}
+
 // Fonction modifiant le nombre de thrad actif sur une machine
 function setNbThread(host, active) {
   value = window.prompt(`Modifier le nombre de Threads actifs pour ${host}, ${active}`, 0);
@@ -107,8 +120,8 @@ function reinitAllJobs(){
   table.rows().eq( 0 ).each( function (idx) {
     var row = table.row( idx );
  
-    if ( row.data()[2] === 'failed' ) {
-        ids.push(row.data()[0])
+    if ( row.data().job_status === 'failed' ) {
+        ids.push(row.data().job_id)
     }
   });
 
