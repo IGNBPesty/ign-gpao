@@ -119,7 +119,7 @@ def launch_command(job, str_thread_id, shell, working_dir):
         if return_code is None:
             return_code = -1
     if error_message:
-        print("Erreur : " + error_message)
+        print("Erreur : " + error_message, file=sys.stderr)
     error_message += "FIN"
     return id_job, return_code, status, error_message
 
@@ -165,7 +165,8 @@ def process(param):
                         "espace disque insuffisant : ",
                         free_gb,
                         "/",
-                        MIN_AVAILABLE_SPACE,
+                        MIN_AVAILABLE_SPACE, 
+                        file=sys.stderr
                     )
                 else:
                     req = requests.get(
@@ -192,7 +193,7 @@ def process(param):
                         json={"log": error_message},
                     )
                     if req.status_code != 200:
-                        print("Error : ", req.status_code, req.content)
+                        print("Error : ", req.status_code, req.content, file=sys.stderr)
 
                 time.sleep(random.randrange(10))
     except KeyboardInterrupt:
@@ -261,11 +262,13 @@ if __name__ == "__main__":
     if NB_SESSION > 0:
         print(
             "Erreur: il y a déjà des sessions "
-            "ouvertes avec ce nom de machine."
+            "ouvertes avec ce nom de machine.", 
+            file=sys.stderr
         )
         print(
             "Pour lancer plusieurs client sur une même machine, "
-            "utiliser un suffixe (ex: python client.py -s _MonSuffixe)."
+            "utiliser un suffixe (ex: python client.py -s _MonSuffixe).", 
+            file=sys.stderr
         )
         sys.exit(1)
 
