@@ -97,7 +97,7 @@ def launch_command(job, str_thread_id, shell, working_dir):
             command = shlex.split(command, posix=False)
         with subprocess.Popen(
             command,
-            shell=shell,
+            shell=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             encoding="utf8",
