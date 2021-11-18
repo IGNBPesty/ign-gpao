@@ -104,6 +104,7 @@ def launch_command(job, str_thread_id, shell, working_dir):
             errors="replace",
             universal_newlines=True,
             cwd=working_dir,
+            env=os.environ
         ) as proc:
             read_stdout_process(proc, id_job)
             return_code = proc.poll()
