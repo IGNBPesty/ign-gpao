@@ -81,6 +81,10 @@ def launch_command(job, str_thread_id, shell, working_dir):
     """ Lancement d'une ligne de commande """
     id_job = job["id"]
     command = job["command"]
+    
+    for k,v in os.environ.items():
+        command = command.replace("$"+k, v)
+    
     print(
         str_thread_id,
         "L'identifiant du job "
@@ -97,14 +101,13 @@ def launch_command(job, str_thread_id, shell, working_dir):
             command = shlex.split(command, posix=False)
         with subprocess.Popen(
             command,
-            shell=True,
+            shell=shell,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             encoding="utf8",
             errors="replace",
             universal_newlines=True,
-            cwd=working_dir,
-            env=os.environ
+            cwd=working_dir
         ) as proc:
             read_stdout_process(proc, id_job)
             return_code = proc.poll()
