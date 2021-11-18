@@ -98,6 +98,7 @@ def launch_command(job, str_thread_id, shell, working_dir):
         with subprocess.Popen(
             command,
             shell=True,
+            executable='/bin/bash',
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             encoding="utf8",
